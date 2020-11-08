@@ -15,15 +15,14 @@ class App extends Component {
   constructor(props){
     super(props);
     this.state = {
-      title: 'Gyl Sample - to be fixed later gonna sleep for now 6am',
+      title: 'Gyl Sample',
       act:0,
       index:'',
       datas:[],
       response:{},
       username:'',
       messages:[],
-      users:[],
-      isNameSet:false
+      users:[]
     }
     //connecting to socket
     this.state.socket = socketIOClient(ENDPOINT,  {transports: ['websocket']});
@@ -35,7 +34,7 @@ class App extends Component {
 
     this.state.socket.on("connect", this.onConnect);
     this.state.socket.on("disconnect", this.onDisconnect);
-    this.state.socket.on("user disconnected", this.onUserDisconnected);
+    // this.state.socket.on("user disconnected", this.onUserDisconnected);
 
 
     //this.state.socket.emit("new user","test",this.onEmit);
@@ -92,14 +91,6 @@ class App extends Component {
   onUserDisconnected = resp => {
     console.log('onUserDisconnected');
     console.log(resp);
-    var index = this.state.users.indexOf(resp)
-    if (index !== -1) {
-      this.state.users.splice(index, 1);
-      this.setState({users: this.state.users});
-    }
-
-
-    console.log(this.state.users);
   };
   onRecvEvent = resp => {
     console.log('onRecvEvent');
@@ -145,45 +136,16 @@ class App extends Component {
 
   //set username
   fSetUserName =(e)=>{
-    console.log('fSetUserName')
-    e.preventDefault();   
-    let name = this.refs.name.value;
-    console.log(this.state.socket.connected);
-    if(!this.state.socket.connected){
-      return;
-    }
-    console.log(this.state.socket.connected);
-    this.state.socket.emit("new user",name,this.onEmit);
-
-    this.setState({
-      'isNameSet':true,
-      'username':name
-    })
-
-  }
-
-  //sendMessage
-  fSendMessage =(e)=>{
-    console.log('fSendMessage')
-    e.preventDefault();   
-    let msg = this.refs.msg.value;
-    console.log(this.state.socket.connected);
-    if(!this.state.socket.connected){
-      return;
-    }
-    console.log(this.state.socket.connected);
-    this.state.socket.emit("chat message",{'nick':this.state.username,'message':msg},this.onEmit);
-
-
-    this.refs.msgForm.reset();
-    this.refs.msg.focus();
+    this.refs.myForm1.hide();
 
   }
 
 
 
   render(){
-    const {users, messages, isNameSet}= this.state;
+    let datas = this.state.datas;
+    let response = this.state.response;
+    const {users, messages}= this.state;
       console.log(users);
     return (
       <div className="App">
@@ -194,31 +156,36 @@ class App extends Component {
             <p><small key={i}>{user}</small></p>
           )}
         </div>
-        {!isNameSet && (
+        <div className="msgDiv">
+          <b>Messages:</b>
+          {messages.map((msg,i)=>
+            <p><small key={i}>{msg.nick}</small>: {msg.message}</p>
+          )}
+        </div>
+
+
+
+
         <form ref="myForm1" className="myForm1">
           <input type="text" ref="name" placeholder="your name" className="formfield"/>
-          <button onClick={this.fSetUserName} className="myButton">Set Name</button>
+          <button onClick={this.fSubmit} className="myButton">Submit</button>
         </form>
-        )}
 
-        {isNameSet && (
-          <form ref="msgForm" className="msgForm">
-            <textarea type="text" ref="msg" placeholder="Your Message:" className="formfield"/>
-            <button onClick={this.fSendMessage} className="myButton">Send</button>
-          </form>
-        )}
 
-        {isNameSet && (
-          <div className="msgDiv">
-            <b>Messages:</b>
-            {messages.map((msg,i)=>
-              <p><b key={i}>{msg.nick}</b>: {msg.message}</p>
+        <form ref="myForm1" className="myForm1">
+          <input type="text" ref="name" placeholder="your name" className="formfield"/>
+          <input type="text" ref="address" placeholder="your address" className="formfield"/>
+          <button onClick={this.fSubmit} className="myButton">Submit</button>
+        </form>
+        <pre>
+          {datas.map((data,i)=>
+             <li key={i} className="myList">
+              {i+1}. {data.name}, {data.address}
+              <button onClick={()=>this.fRemove(i)} className="myButton">remove</button>
+              <button onClick={()=>this.fEdit(i)} className="myButton">edit</button>
+             </li>
             )}
-          </div>
-        )}
-
-
-
+        </pre>
 
 
       </div>
