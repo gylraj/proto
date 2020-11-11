@@ -1,12 +1,15 @@
-import logo from './logo.svg';
-import React, {Component, useState, useEffect} from 'react';
-import Home from './components/Home'
+import React, {Component} from 'react';
+// import Home from './components/Home'
+// import MessageNav from './components/MessageNav'
+// import DirectChat from './components/DirectChat'
 import './App.css';
 
 //socket io client
 import socketIOClient from "socket.io-client";
 //socket io endpoint - to be declared as env var
-const ENDPOINT = "https://gylsio.herokuapp.com";
+// const ENDPOINT = "https://gylsio.herokuapp.com";
+const ENDPOINT = "http://localhost:5555";
+localStorage.debug = '*';
 
 
 class App extends Component {
@@ -23,8 +26,15 @@ class App extends Component {
       username:'',
       messages:[],
       users:[],
-      isNameSet:false
+      isNameSet:false,
+      currentUser:{},
+
     }
+    this.myForm1 = React.createRef();
+    this.dcForm = React.createRef();
+    this.dcText = React.createRef();
+    this.dcForm = React.createRef();
+
     //connecting to socket
     this.state.socket = socketIOClient(ENDPOINT,  {transports: ['websocket']});
   }
@@ -44,8 +54,15 @@ class App extends Component {
     this.state.socket.on("new user", this.onNewUser);
     //recv chat
     this.state.socket.on("chat message", this.onChatMessage);
+    this.state.socket.on("event", this.onRecvEvent);
 
  }
+
+ onDebug = resp => {
+    console.log('onDebug');
+    console.log(resp);
+ }
+
   //recv chat callback
   onChatMessage = resp => {
     console.log('onChatMessage');
@@ -112,6 +129,7 @@ class App extends Component {
     this.state.socket.off("chat message", this.onChatMessage);
     this.state.socket.off("new user", this.onNewUser);
     this.state.socket.off("user disconnected", this.onUserDisconnected);
+    this.state.socket.off("debug", this.onDebug);
   }
 
  fSubmit =(e)=>{
@@ -137,7 +155,7 @@ class App extends Component {
     datas : datas
   });
 
-  this.refs.myForm1.reset();
+  this.myForm1.reset();
   this.refs.name.focus();
 
 
@@ -182,11 +200,135 @@ class App extends Component {
 
 
 
+  //sendDcMessage
+  fSendDcMessage =(e)=>{
+    console.log('fSendDcMessage')
+    e.preventDefault();   
+    // let msg = this.refs.msg.value;
+    // console.log(this.state.socket.connected);
+    // if(!this.state.socket.connected){
+    //   return;
+    // }
+    // console.log(this.state.socket.connected);
+    // this.state.socket.emit("chat message",{'nick':this.state.username,'message':msg},this.onEmit);
+
+
+    // this.refs.msgForm.reset();
+    // this.refs.msg.focus();
+
+  }
+
+
+
+
   render(){
     const {users, messages, isNameSet}= this.state;
       console.log(users);
     return (
       <div className="App">
+
+        <div className="card direct-chat direct-chat-primary">
+          <div className="card-header">
+            <h3 className="card-title">Direct Chat</h3>
+
+            <div className="card-tools">
+              <span data-toggle="tooltip" title="3 New Messages" className="badge badge-primary">3</span>
+              <button type="button" className="btn btn-tool" data-card-widget="collapse">
+                <i className="fas fa-minus"></i>
+              </button>
+              <button type="button" className="btn btn-tool" data-toggle="tooltip" title="Contacts"
+                      data-widget="chat-pane-toggle">
+                <i className="fas fa-comments"></i>
+              </button>
+              <button type="button" className="btn btn-tool" data-card-widget="remove"><i className="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+
+          <div className="card-body">
+            <div className="direct-chat-messages">
+
+              <div className="direct-chat-msg">
+                <div className="direct-chat-infos clearfix">
+                  <span className="direct-chat-name float-left">Alexander Pierce</span>
+                  <span className="direct-chat-timestamp float-right">23 Jan 2:00 pm</span>
+                </div>
+                <div className="direct-chat-text">
+                  Is this template really for free? That's unbelievable!
+                </div>
+              </div>
+
+              <div className="direct-chat-msg right">
+                <div className="direct-chat-infos clearfix">
+                  <span className="direct-chat-name float-right">Sarah Bullock</span>
+                  <span className="direct-chat-timestamp float-left">23 Jan 2:05 pm</span>
+                </div>
+                <div className="direct-chat-text">
+                  You better believe it!
+                </div>
+              </div>
+
+
+            </div>
+
+            <div className="direct-chat-contacts">
+              <ul className="contacts-list">
+
+                {users.map((user,i)=>
+                  <li>
+                    <a href="/">
+                      <div className="contacts-list-info">
+                        <span className="contacts-list-name">
+                          {user}
+                          <small className="contacts-list-date float-right">2/28/2015</small>
+                        </span>
+                        <span className="contacts-list-msg">How have you been? I was...</span>
+                      </div>
+                    </a>
+                  </li>
+                )}
+                
+              </ul>
+            </div>
+
+
+
+
+
+
+          </div>
+          <div className="card-footer">
+            <form ref={this.dcForm} action="#">
+              <div className="input-group">
+                <input type="text" ref="msgText" placeholder="Type Message" className="form-control"/>
+                <span className="input-group-append">
+                  <button type="button" onClick={this.fSendDcMessage} className="btn btn-primary">Send</button>
+                </span>
+              </div>
+            </form>
+          </div>
+
+
+        </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         <h2>{this.state.title}</h2>
         <div className="userDiv">
           <b>Online:</b>
@@ -195,7 +337,7 @@ class App extends Component {
           )}
         </div>
         {!isNameSet && (
-        <form ref="myForm1" className="myForm1">
+        <form ref={this.myForm1} className="myForm1">
           <input type="text" ref="name" placeholder="your name" className="formfield"/>
           <button onClick={this.fSetUserName} className="myButton">Set Name</button>
         </form>
