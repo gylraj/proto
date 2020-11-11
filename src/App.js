@@ -7,8 +7,8 @@ import './App.css';
 //socket io client
 import socketIOClient from "socket.io-client";
 //socket io endpoint - to be declared as env var
-// const ENDPOINT = "https://gylsio.herokuapp.com";
-const ENDPOINT = "http://localhost:5555";
+const ENDPOINT = "https://gylsio.herokuapp.com";
+// const ENDPOINT = "http://localhost:5555";
 localStorage.debug = '*';
 
 
@@ -300,7 +300,7 @@ class App extends Component {
           <div className="card-footer">
             <form ref={this.dcForm} action="#">
               <div className="input-group">
-                <input type="text" ref="msgText" placeholder="Type Message" className="form-control"/>
+                <input type="text" ref={this.dcText} placeholder="Type Message" className="form-control"/>
                 <span className="input-group-append">
                   <button type="button" onClick={this.fSendDcMessage} className="btn btn-primary">Send</button>
                 </span>
