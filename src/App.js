@@ -378,7 +378,7 @@ class App extends Component {
                         data-widget="chat-pane-toggle">
                   <i className="fas fa-comments"></i>
                 </button>
-                <button type="button" className="btn btn-tool" data-card-widget="remove"><i className="fas fa-times"></i>
+                <button type="button" className="btn btn-tool hide" data-card-widget="remove"><i className="fas fa-times"></i>
                 </button>
               </div>
             )}
