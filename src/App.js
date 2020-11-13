@@ -9,6 +9,7 @@ import socketIOClient from "socket.io-client";
 //socket io endpoint - to be declared as env var
 const ENDPOINT = "https://gylsio.herokuapp.com";
 // const ENDPOINT = "http://localhost:5555";
+const IS_DEBUG = false;
 // localStorage.debug = '*';
 
 
@@ -96,15 +97,15 @@ class App extends Component {
   }
 
   onConnect = r  => {
-    console.log('onConnect');
-    console.log(this.state.socket);
+    this.consoleLogThis('onConnect');
+    this.consoleLogThis(this.state.socket);
   };
 
   onDisconnect = r  => {
     alert("Disconnected to Server");
-    console.log('onDisconnect');
-    console.log(r);
-    console.log('r');
+    this.consoleLogThis('onDisconnect');
+    this.consoleLogThis(r);
+    this.consoleLogThis('r');
     this.setState({
       'isNameSet':false,
       'messages':{},
@@ -117,8 +118,8 @@ class App extends Component {
 
 
   onSetUser = r  => {
-    console.log('onSetUser  ');
-    console.log(r);
+    this.consoleLogThis('onSetUser  ');
+    this.consoleLogThis(r);
     this.setState({
       'isNameSet':true,
       'currentUser':r
@@ -129,8 +130,8 @@ class App extends Component {
   };
 
   onFetchUsers = rr  => {
-    console.log('onFetchUsers ');
-    console.log(rr);
+    this.consoleLogThis('onFetchUsers ');
+    this.consoleLogThis(rr);
     this.setState({
       'userMap':rr
     })
@@ -139,30 +140,30 @@ class App extends Component {
 
 
   onEmit = r  => {
-    console.log('onEmit');
-    console.log(r);
+    this.consoleLogThis('onEmit');
+    this.consoleLogThis(r);
   };
 
   onUserDisconnected = rr  => {
-    console.log('onUserDisconnected');
-    console.log(rr);
+    this.consoleLogThis('onUserDisconnected');
+    this.consoleLogThis(rr);
     var um = this.state.userMap;
 
     delete um[rr];
-    
+
     this.setState({
       'userMap':um
     });
-    if(this.state.currentContact.uid == rr){
+    if(this.state.currentContact.uid === rr){
       this.setState({
         'currentContact':{},
         'currentMessages':[]
       });
       var m = this.state.messages;
-      console.log('m')
-      console.log(m)
+      this.consoleLogThis('m')
+      this.consoleLogThis(m)
       delete m[rr];
-      console.log(m)
+      this.consoleLogThis(m)
 
       this.setState({
         'messages':m
@@ -175,11 +176,11 @@ class App extends Component {
   };
 
   onRecvMessage = r  => {
-    console.log('onRecvMessage');
-    console.log(r);
+    this.consoleLogThis('onRecvMessage');
+    this.consoleLogThis(r);
 
     var m = this.state.messages;
-    console.log(m);
+    this.consoleLogThis(m);
 
     if(!m.hasOwnProperty(r.from)){
       m[r.from] = [];
@@ -191,7 +192,7 @@ class App extends Component {
 
     if(this.state.currentContact.uid === r.from){
       var currentMessages = m[r.from];
-      console.log(currentMessages);
+      this.consoleLogThis(currentMessages);
 
       this.setState({
         'currentMessages': currentMessages
@@ -210,15 +211,15 @@ class App extends Component {
 
   //set username
   fLoginUser =(e)=>{
-    console.log('fSetUserName ')
+    this.consoleLogThis('fSetUserName ')
     e.preventDefault();   
     let username = this.loginText.current.value;//.toString;
     if(!this.state.socket.connected){
-      console.log("not connected");
+      this.consoleLogThis("not connected");
       alert("Server Offline, try again later")
       return;
     }
-    console.log("connected");
+    this.consoleLogThis("connected");
     this.state.socket.emit("_login",username);
 
     this.setState({
@@ -230,17 +231,17 @@ class App extends Component {
   }
 
   selectCurrentContact =(key)=>{
-    console.log('selectCurrentContact');
-    console.log(key);
+    this.consoleLogThis('selectCurrentContact');
+    this.consoleLogThis(key);
     this.btnContact.current.click();
     var m = this.state.messages;
-    console.log(m);
+    this.consoleLogThis(m);
 
     if(!m.hasOwnProperty(key)){
       m[key] = [];
     }
     var currentMessages = m[key];
-    console.log(currentMessages);
+    this.consoleLogThis(currentMessages);
 
     this.setState({
       'currentContact':this.state.userMap[key],
@@ -251,16 +252,16 @@ class App extends Component {
   }
 
   fSendDcMessage =(e)=>{
-    console.log('fSendDcMessage')
+    this.consoleLogThis('fSendDcMessage')
     e.preventDefault();   
     var cc = this.state.currentContact;
     if (Object.keys(cc).length === 0) {
-      console.log(cc);
+      this.consoleLogThis(cc);
       alert("Select a Stranger");
       return;
     }
     if(!this.state.socket.connected){
-      console.log("not connected");
+      this.consoleLogThis("not connected");
       alert("Server Offline, try again later")
       return;
     }
@@ -284,11 +285,11 @@ class App extends Component {
       m[cu.uid] = [];
     }
     m[cu.uid].push(message);
-    console.log('this.state.currentMessages');
-    console.log(this.state.currentMessages);
+    this.consoleLogThis('this.state.currentMessages');
+    this.consoleLogThis(this.state.currentMessages);
     this.state.currentMessages.push(message);
-    console.log('this.state.currentMessages ');
-    console.log(this.state.currentMessages);
+    this.consoleLogThis('this.state.currentMessages ');
+    this.consoleLogThis(this.state.currentMessages);
 
     this.setState({
       'currentMessages': this.state.currentMessages,
@@ -321,6 +322,11 @@ class App extends Component {
      }
      return result;
   }
+  consoleLogThis =(s)=>{
+    if(IS_DEBUG){
+      console.log(s);
+    }
+  }
 
   scrollToBottom = () => {
     if(this.messagesEnd.current){
@@ -334,8 +340,6 @@ class App extends Component {
 
   render(){
     const {
-      users, 
-      messages, 
       isNameSet, 
       currentUser, 
       userMap, 
@@ -343,8 +347,8 @@ class App extends Component {
       currentMessages,
       defaultImage
     } = this.state;
-    console.log('render userMap');
-    console.log(userMap);
+    this.consoleLogThis('render userMap');
+    this.consoleLogThis(userMap);
     return (
       <div className="App">
 
@@ -397,7 +401,7 @@ class App extends Component {
                       >{cm.from_name}</span>
                       <span className={(cm.from === currentUser.uid)?'direct-chat-timestamp float-left':'direct-chat-timestamp float-right'}>{this.getTS(cm.date_sent)}</span>
                     </div>
-                    <img className="direct-chat-img" src={defaultImage}/>
+                    <img className="direct-chat-img" src={defaultImage} alt="meaningful :D"/>
                     <div className="direct-chat-text">
                       {cm.messageText}
                     </div>
@@ -416,7 +420,7 @@ class App extends Component {
                 <ul className="contacts-list">
                   {Object.keys(userMap).reverse().map((key, i)=>
                     <li onClick={() => this.selectCurrentContact(key)} key={key} className={(userMap[key].uid === currentUser.uid)?"hide":""}>
-                      <img className="contacts-list-img" src={defaultImage}/>
+                      <img className="contacts-list-img" src={defaultImage} alt="meaningful :D"/>
                       <div className="contacts-list-info">
                         <span className="contacts-list-name">{userMap[key].name}
                           <small className="contacts-list-date float-right">{(userMap[key].messageText)?this.getTS(userMap[key].date_sent):""}</small>
