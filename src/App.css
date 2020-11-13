@@ -37,3 +37,13 @@
   }
 }
 */
+
+.App .blue{
+  color: blue;
+} 
+
+
+.App .hide{
+  display: none;
+} 
+

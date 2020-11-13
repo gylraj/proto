@@ -9,7 +9,7 @@ import socketIOClient from "socket.io-client";
 //socket io endpoint - to be declared as env var
 const ENDPOINT = "https://gylsio.herokuapp.com";
 // const ENDPOINT = "http://localhost:5555";
-localStorage.debug = '*';
+// localStorage.debug = '*';
 
 
 class App extends Component {
@@ -24,69 +24,76 @@ class App extends Component {
       datas:[],
       response:{},
       username:'',
-      messages:[],
+      messages:{},
       users:[],
       isNameSet:false,
       currentUser:{},
+      userMap:{},
+      currentContact:{},
+      currentMessages:[],
+      defaultImage:process.env.PUBLIC_URL +"/logo192.png"
 
     }
     this.myForm1 = React.createRef();
     this.dcForm = React.createRef();
     this.dcText = React.createRef();
     this.dcForm = React.createRef();
+    this.loginForm = React.createRef();
+    this.loginText = React.createRef();
+    this.btnContact = React.createRef();
+    this.messagesEnd = React.createRef();
 
     //connecting to socket
     this.state.socket = socketIOClient(ENDPOINT,  {transports: ['websocket']});
+
   }
 
   //onload component 
- componentDidMount(){
-   this.refs.name.focus();
-
+  componentDidMount(){
     this.state.socket.on("connect", this.onConnect);
     this.state.socket.on("disconnect", this.onDisconnect);
-    this.state.socket.on("user disconnected", this.onUserDisconnected);
 
 
-    //this.state.socket.emit("new user","test",this.onEmit);
+    //_setUser
+    this.state.socket.on("_setUser", this.onSetUser);
 
-    //recv new user
-    this.state.socket.on("new user", this.onNewUser);
-    //recv chat
-    this.state.socket.on("chat message", this.onChatMessage);
-    this.state.socket.on("event", this.onRecvEvent);
+    //_fetchUsers
+    this.state.socket.on("_fetchUsers", this.onFetchUsers);
+    
+    //_userDisconnected
+    this.state.socket.on("_userDisconnected", this.onUserDisconnected);
 
- }
-
- onDebug = resp => {
-    console.log('onDebug');
-    console.log(resp);
- }
-
-  //recv chat callback
-  onChatMessage = resp => {
-    console.log('onChatMessage');
-    console.log(resp);
-    this.state.messages.push(resp);
-    console.log(this.state.messages);
-    this.setState({
-      'messages': this.state.messages,
-    });
-    console.log(this.state.messages);
-  };
-  //recv chat callback
-  onNewUser = newUser => {
-    //array string newUser
-    console.log('onNewUser');
-    console.log(newUser);
-    this.setState({
-      'users': newUser,
-    });
-    console.log(this.state.users)
-  };
+    //onEmit
+    this.state.socket.on("onEmit", this.onEmit);
+    //onRecvMessage
+    this.state.socket.on("_recvMessage", this.onRecvMessage);
+  }
 
 
+  // on unload 
+  componentWillUnmount() {
+    this.state.socket.off("connect", this.onConnect);
+    this.state.socket.off("disconnect", this.onDisconnect);
 
+    //_setUser
+    this.state.socket.off("_setUser", this.onSetUser);
+
+    //_fetchUsers
+    this.state.socket.off("_fetchUsers", this.onFetchUsers);
+
+    //_userDisconnected
+    this.state.socket.off("_userDisconnected", this.onUserDisconnected);
+
+    //onEmit
+    this.state.socket.off("onEmit", this.onEmit);
+    //onRecvMessage
+    this.state.socket.off("_recvMessage", this.onRecvMessage);
+  }
+
+
+  componentDidUpdate() {
+    this.scrollToBottom();
+  }
 
   onConnect = r  => {
     console.log('onConnect');
@@ -94,270 +101,376 @@ class App extends Component {
   };
 
   onDisconnect = r  => {
+    alert("Disconnected to Server");
     console.log('onDisconnect');
     console.log(r);
+    console.log('r');
+    this.setState({
+      'isNameSet':false,
+      'messages':{},
+      'currentUser':{},
+      'userMap':{},
+      'currentContact':{},
+      'currentMessages':[],
+    });
   };
+
+
+  onSetUser = r  => {
+    console.log('onSetUser  ');
+    console.log(r);
+    this.setState({
+      'isNameSet':true,
+      'currentUser':r
+    });
+    if(this.btnContact.current){
+      this.btnContact.current.click();
+    }
+  };
+
+  onFetchUsers = rr  => {
+    console.log('onFetchUsers ');
+    console.log(rr);
+    this.setState({
+      'userMap':rr
+    })
+
+  };
+
+
   onEmit = r  => {
     console.log('onEmit');
     console.log(r);
   };
-  onTyping = resp => {
-    console.log('onTyping');
-    console.log(resp);
-  };
 
-  onUserDisconnected = resp => {
+  onUserDisconnected = rr  => {
     console.log('onUserDisconnected');
-    console.log(resp);
-    var index = this.state.users.indexOf(resp)
-    if (index !== -1) {
-      this.state.users.splice(index, 1);
-      this.setState({users: this.state.users});
+    console.log(rr);
+    var um = this.state.userMap;
+
+    delete um[rr];
+    
+    this.setState({
+      'userMap':um
+    });
+    if(this.state.currentContact.uid == rr){
+      this.setState({
+        'currentContact':{},
+        'currentMessages':[]
+      });
+      var m = this.state.messages;
+      console.log('m')
+      console.log(m)
+      delete m[rr];
+      console.log(m)
+
+      this.setState({
+        'messages':m
+      });
     }
 
-
-    console.log(this.state.users);
-  };
-  onRecvEvent = resp => {
-    console.log('onRecvEvent');
-    console.log(resp);
+    //message
+    //currentcontact
+    //currentmessage
   };
 
- // on unload 
- componentWillUnmount() {
-    this.state.socket.off("typing", this.onTyping);
-    this.state.socket.off("chat message", this.onChatMessage);
-    this.state.socket.off("new user", this.onNewUser);
-    this.state.socket.off("user disconnected", this.onUserDisconnected);
-    this.state.socket.off("debug", this.onDebug);
-  }
+  onRecvMessage = r  => {
+    console.log('onRecvMessage');
+    console.log(r);
 
- fSubmit =(e)=>{
-  e.preventDefault();
-  console.log('test');
+    var m = this.state.messages;
+    console.log(m);
 
-   let datas = this.state.datas;
-   let name = this.refs.name.value;
-   let address = this.refs.address.value;
-  console.log('name :'+name);
-  console.log('address :'+address);
-
-  let data  = {
-    name, 
-    address
-  }
-
-
-
-  datas.push(data);
-
-  this.setState({
-    datas : datas
-  });
-
-  this.myForm1.reset();
-  this.refs.name.focus();
-
-
- }
-
-  //set username
-  fSetUserName =(e)=>{
-    console.log('fSetUserName')
-    e.preventDefault();   
-    let name = this.refs.name.value;
-    console.log(this.state.socket.connected);
-    if(!this.state.socket.connected){
-      return;
+    if(!m.hasOwnProperty(r.from)){
+      m[r.from] = [];
     }
-    console.log(this.state.socket.connected);
-    this.state.socket.emit("new user",name,this.onEmit);
+    m[r.from].push(r);
+    this.setState({
+      'messages': m,
+    });
+
+    if(this.state.currentContact.uid === r.from){
+      var currentMessages = m[r.from];
+      console.log(currentMessages);
+
+      this.setState({
+        'currentMessages': currentMessages
+      });
+    }
+    var um = this.state.userMap;
+    um[r.from]["messageText"] = r.messageText;
+    um[r.from]["date_sent"] = r.date_sent;
 
     this.setState({
-      'isNameSet':true,
-      'username':name
-    })
+      'userMap': um
+    });
 
-  }
+  };
 
-  //sendMessage
-  fSendMessage =(e)=>{
-    console.log('fSendMessage')
+
+  //set username
+  fLoginUser =(e)=>{
+    console.log('fSetUserName ')
     e.preventDefault();   
-    let msg = this.refs.msg.value;
-    console.log(this.state.socket.connected);
+    let username = this.loginText.current.value;//.toString;
     if(!this.state.socket.connected){
+      console.log("not connected");
+      alert("Server Offline, try again later")
       return;
     }
-    console.log(this.state.socket.connected);
-    this.state.socket.emit("chat message",{'nick':this.state.username,'message':msg},this.onEmit);
+    console.log("connected");
+    this.state.socket.emit("_login",username);
 
-
-    this.refs.msgForm.reset();
-    this.refs.msg.focus();
-
+    this.setState({
+      'username':username
+    });
+    if(this.btnContact.current){
+      this.btnContact.current.click();
+    }
   }
 
+  selectCurrentContact =(key)=>{
+    console.log('selectCurrentContact');
+    console.log(key);
+    this.btnContact.current.click();
+    var m = this.state.messages;
+    console.log(m);
 
+    if(!m.hasOwnProperty(key)){
+      m[key] = [];
+    }
+    var currentMessages = m[key];
+    console.log(currentMessages);
 
-  //sendDcMessage
+    this.setState({
+      'currentContact':this.state.userMap[key],
+      'currentMessages': currentMessages,
+      'messages': m,
+    });
+    
+  }
+
   fSendDcMessage =(e)=>{
     console.log('fSendDcMessage')
     e.preventDefault();   
-    // let msg = this.refs.msg.value;
-    // console.log(this.state.socket.connected);
-    // if(!this.state.socket.connected){
-    //   return;
-    // }
-    // console.log(this.state.socket.connected);
-    // this.state.socket.emit("chat message",{'nick':this.state.username,'message':msg},this.onEmit);
+    var cc = this.state.currentContact;
+    if (Object.keys(cc).length === 0) {
+      console.log(cc);
+      alert("Select a Stranger");
+      return;
+    }
+    if(!this.state.socket.connected){
+      console.log("not connected");
+      alert("Server Offline, try again later")
+      return;
+    }
+    var cu = this.state.currentUser;
+    var messageText = this.dcText.current.value;
+    if(messageText===""){
+      return;
+    }
+    var current_time = new Date().getTime();
+    var message = {
+      "temp_id":this.randomString(3)+current_time,
+      "to":cc.uid,
+      "to_name":cc.name,
+      "messageText":messageText,
+      "from":cu.uid,
+      "from_name":cu.name,
+      "date_sent": current_time
+    }
+    var m = this.state.messages;
+    if(!m.hasOwnProperty(cu.uid)){
+      m[cu.uid] = [];
+    }
+    m[cu.uid].push(message);
+    console.log('this.state.currentMessages');
+    console.log(this.state.currentMessages);
+    this.state.currentMessages.push(message);
+    console.log('this.state.currentMessages ');
+    console.log(this.state.currentMessages);
 
+    this.setState({
+      'currentMessages': this.state.currentMessages,
+      'messages': m
+    });
+    this.dcForm.current.reset();
 
-    // this.refs.msgForm.reset();
-    // this.refs.msg.focus();
+    this.scrollToBottom();
 
+    this.state.socket.emit("_sendMessage",message,this.onEmit);
   }
+  getTS = (ts)=>{
+    var dt = new Date(ts);
+    var date_format_str = (dt.getMonth()+1).toString().padStart(2, '0')+ "/"+ 
+      dt.getDate().toString().padStart(2, '0') + "/"+ 
+      dt.getFullYear().toString().padStart(4, '0') + " "+ 
+      dt.getHours().toString().padStart(2, '0')+ ":"+
+      dt.getMinutes().toString().padStart(2, '0')+ ":"+
+      dt.getSeconds().toString().padStart(2, '0');
+
+    return date_format_str;
+  }
+
+  randomString =(length)=>{
+     var result           = '';
+     var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+     var charactersLength = characters.length;
+     for ( var i = 0; i < length; i++ ) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+     }
+     return result;
+  }
+
+  scrollToBottom = () => {
+    if(this.messagesEnd.current){
+      this.messagesEnd.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
+
 
 
 
 
   render(){
-    const {users, messages, isNameSet}= this.state;
-      console.log(users);
+    const {
+      users, 
+      messages, 
+      isNameSet, 
+      currentUser, 
+      userMap, 
+      currentContact, 
+      currentMessages,
+      defaultImage
+    } = this.state;
+    console.log('render userMap');
+    console.log(userMap);
     return (
       <div className="App">
 
+        {!isNameSet && (
+          <h3 className="text-center">Welcome, Stranger</h3>
+        )}
+
+        {isNameSet && (
+          <h3 className="text-center blue">Welcome, {currentUser.name}</h3>
+        )}
         <div className="card direct-chat direct-chat-primary">
           <div className="card-header">
-            <h3 className="card-title">Direct Chat</h3>
+            {!isNameSet && (
+              <h3 className="card-title">Set a Name</h3>
+            )}
 
-            <div className="card-tools">
-              <span data-toggle="tooltip" title="3 New Messages" className="badge badge-primary">3</span>
-              <button type="button" className="btn btn-tool" data-card-widget="collapse">
-                <i className="fas fa-minus"></i>
-              </button>
-              <button type="button" className="btn btn-tool" data-toggle="tooltip" title="Contacts"
-                      data-widget="chat-pane-toggle">
-                <i className="fas fa-comments"></i>
-              </button>
-              <button type="button" className="btn btn-tool" data-card-widget="remove"><i className="fas fa-times"></i>
-              </button>
-            </div>
+            {isNameSet && (
+              <h3 className="card-title blue">{(currentContact.name)?currentContact.name:'Talk to Stranger'} </h3>
+            )}
+            {isNameSet && (
+              <div className="card-tools">
+                <span data-toggle="tooltip" title="3 New Messages" className="badge badge-primary hide">3</span>
+                <button type="button" className="btn btn-tool" data-card-widget="collapse">
+                  <i className="fas fa-minus"></i>
+                </button>
+                <button ref={this.btnContact} type="button" className="btn btn-tool" data-toggle="tooltip" title="Contacts"
+                        data-widget="chat-pane-toggle">
+                  <i className="fas fa-comments"></i>
+                </button>
+                <button type="button" className="btn btn-tool" data-card-widget="remove"><i className="fas fa-times"></i>
+                </button>
+              </div>
+            )}
+
+
+
           </div>
 
           <div className="card-body">
-            <div className="direct-chat-messages">
-
-              <div className="direct-chat-msg">
-                <div className="direct-chat-infos clearfix">
-                  <span className="direct-chat-name float-left">Alexander Pierce</span>
-                  <span className="direct-chat-timestamp float-right">23 Jan 2:00 pm</span>
-                </div>
-                <div className="direct-chat-text">
-                  Is this template really for free? That's unbelievable!
-                </div>
-              </div>
-
-              <div className="direct-chat-msg right">
-                <div className="direct-chat-infos clearfix">
-                  <span className="direct-chat-name float-right">Sarah Bullock</span>
-                  <span className="direct-chat-timestamp float-left">23 Jan 2:05 pm</span>
-                </div>
-                <div className="direct-chat-text">
-                  You better believe it!
-                </div>
-              </div>
-
-
-            </div>
-
-            <div className="direct-chat-contacts">
-              <ul className="contacts-list">
-
-                {users.map((user,i)=>
-                  <li>
-                    <a href="/">
-                      <div className="contacts-list-info">
-                        <span className="contacts-list-name">
-                          {user}
-                          <small className="contacts-list-date float-right">2/28/2015</small>
-                        </span>
-                        <span className="contacts-list-msg">How have you been? I was...</span>
-                      </div>
-                    </a>
-                  </li>
+            {isNameSet && (
+              <div className="direct-chat-messages" >
+                {(currentMessages.length === 0) && (
+                  <div className="text-center blue">: No Message :</div>
                 )}
-                
-              </ul>
-            </div>
 
+                {currentMessages.map((cm,i)=>
+                  <div className={(cm.from === currentUser.uid)?'direct-chat-msg right':'direct-chat-msg'} key={i}>
+                    <div className="direct-chat-infos clearfix">
+                      <span className={(cm.from === currentUser.uid)?'direct-chat-name float-right':'direct-chat-name float-left'}
+                      >{cm.from_name}</span>
+                      <span className={(cm.from === currentUser.uid)?'direct-chat-timestamp float-left':'direct-chat-timestamp float-right'}>{this.getTS(cm.date_sent)}</span>
+                    </div>
+                    <img className="direct-chat-img" src={defaultImage}/>
+                    <div className="direct-chat-text">
+                      {cm.messageText}
+                    </div>
+                  </div>
+                )}
+                <div ref={this.messagesEnd} />
 
+              </div>
+            )}
 
-
+            {isNameSet &&  (
+              <div className="direct-chat-contacts">
+                {(Object.keys(userMap).length===1) && (
+                  <div className="text-center">: No Stranger :</div>
+                )}
+                <ul className="contacts-list">
+                  {Object.keys(userMap).reverse().map((key, i)=>
+                    <li onClick={() => this.selectCurrentContact(key)} key={key} className={(userMap[key].uid === currentUser.uid)?"hide":""}>
+                      <img className="contacts-list-img" src={defaultImage}/>
+                      <div className="contacts-list-info">
+                        <span className="contacts-list-name">{userMap[key].name}
+                          <small className="contacts-list-date float-right">{(userMap[key].messageText)?this.getTS(userMap[key].date_sent):""}</small>
+                        </span>
+                        <span className="contacts-list-msg">{(userMap[key].messageText)?userMap[key].messageText:""}</span>
+                      </div>
+                    </li>
+                  )}
+                  
+                </ul>
+              </div>
+            )}
 
 
           </div>
           <div className="card-footer">
-            <form ref={this.dcForm} action="#">
-              <div className="input-group">
-                <input type="text" ref={this.dcText} placeholder="Type Message" className="form-control"/>
-                <span className="input-group-append">
-                  <button type="button" onClick={this.fSendDcMessage} className="btn btn-primary">Send</button>
-                </span>
-              </div>
-            </form>
-          </div>
-
-
-        </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        <h2>{this.state.title}</h2>
-        <div className="userDiv">
-          <b>Online:</b>
-          {users.map((user,i)=>
-            <p><small key={i}>{user}</small></p>
-          )}
-        </div>
-        {!isNameSet && (
-        <form ref={this.myForm1} className="myForm1">
-          <input type="text" ref="name" placeholder="your name" className="formfield"/>
-          <button onClick={this.fSetUserName} className="myButton">Set Name</button>
-        </form>
-        )}
-
-        {isNameSet && (
-          <form ref="msgForm" className="msgForm">
-            <textarea type="text" ref="msg" placeholder="Your Message:" className="formfield"/>
-            <button onClick={this.fSendMessage} className="myButton">Send</button>
-          </form>
-        )}
-
-        {isNameSet && (
-          <div className="msgDiv">
-            <b>Messages:</b>
-            {messages.map((msg,i)=>
-              <p><b key={i}>{msg.nick}</b>: {msg.message}</p>
+            {isNameSet && (
+              <form ref={this.dcForm} onSubmit={this.fSendDcMessage}>
+                <div className="input-group">
+                  <input type="text" ref={this.dcText} placeholder="Type Message" className="form-control"/>
+                  <span className="input-group-append">
+                    <button type="button" onClick={this.fSendDcMessage} className="btn btn-primary">Send</button>
+                  </span>
+                </div>
+              </form>
+            )}
+            {!isNameSet && (
+              <form ref={this.loginForm} onSubmit={this.fLoginUser}>
+                <div className="input-group">
+                  <input type="text" ref={this.loginText} placeholder="What's your name" className="form-control"/>
+                  <span className="input-group-append">
+                    <button type="button" onClick={this.fLoginUser} className="btn btn-primary">Set Name</button>
+                  </span>
+                </div>
+              </form>
             )}
           </div>
-        )}
+
+        </div>
+        <div className="text-center"><small>Data here are meant to be volatile and not a single datum is being saved.</small></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
