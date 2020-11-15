@@ -13,7 +13,7 @@ import socketIOClient from "socket.io-client";
 //socket io endpoint - to be declared as env var
 const LIVE_ENDPOINT = "https://gylsio.herokuapp.com";
 const LOCAL_ENDPOINT = "http://localhost:5555";
-const IS_DEBUG = false;
+const IS_DEBUG = true;
 const IO_OPTS = {
     transports: ['websocket'],
     autoConnect: false
