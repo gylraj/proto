@@ -3,32 +3,30 @@ import moment from 'moment';
 //.tz("", "Asia/Manila")
 
 
-//webrtc docs
-// https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling
-
 // import Home from './components/Home'
 // import MessageNav from './components/MessageNav'
 // import DirectChat from './components/DirectChat'
 import './App.css';
+
+//https://www.npmjs.com/package/rtcpeerconnection
+// import PeerConnection from 'rtcpeerconnection'
 
 //socket io client
 import socketIOClient from "socket.io-client";
 //socket io endpoint - to be declared as env var
 const LIVE_ENDPOINT = "https://gylsio.herokuapp.com";
 const LOCAL_ENDPOINT = "http://localhost:5555";
-// const LOCAL_ENDPOINT = "http://192.168.43.30:5555";
-const IS_DEBUG = false;
+const IS_DEBUG = true;
 const IO_OPTS = {
     transports: ['websocket'],
-    autoConnect: false,
-    origins: '*:*'// <---- Allow any origin here
+    autoConnect: false
   };
 
 const DEFAULT_IMAGE_URL = process.env.PUBLIC_URL +"/logo192.png";
 const DISCONNECTED_STRING  = "Disconnected to Server";
 const SERVER_OFFLINE_STRING = "Server Offline, try again later";
 
-var myPeerConnection = null;
+var peerConnection = null;
 
 class App extends Component {
 
@@ -51,8 +49,7 @@ class App extends Component {
       currentMessages:[],
       onlineUserCount:0,
       activeUserCount:0,
-      localStream : null,
-      rtcMessage:[]
+      localStream : null
 
 
     }
@@ -72,9 +69,7 @@ class App extends Component {
 
       if(IS_DEBUG){
         this.state.socket = socketIOClient(LOCAL_ENDPOINT,  IO_OPTS);
-        // localStorage.debug = '*';
-        localStorage.debug = '';
-
+        localStorage.debug = '*';
       }else{
         this.state.socket = socketIOClient(LIVE_ENDPOINT,  IO_OPTS);
         localStorage.debug = '';
@@ -106,6 +101,9 @@ class App extends Component {
     if(!this.state.socket.connected){
       this.state.socket.open();
     }
+
+    this.tryGettingUserMedia();
+
     
   }
 
@@ -210,26 +208,6 @@ class App extends Component {
     this.consoleLogThis('onRecvMessage');
     this.consoleLogThis(data);
 
-    if(data.rtc){
-      this.selectCurrentContact(data.from);
-      this.consoleLogThis(data.signal);
-      switch(data.signal.type) {
-        case "video-offer":
-          this.handleVideoOfferMsg(data.signal);
-          break;
-        case "video-answer":
-          this.handleVideoAnswerMsg(data.signal);
-          break;
-        case "new-ice-candidate":
-          this.handleNewICECandidateMsg(data.signal);
-          break;
-        default:
-          break;
-      }
-
-      return;
-    }
-
 
     //add to messages stack
     var m = this.state.messages;
@@ -272,302 +250,98 @@ class App extends Component {
   };
 
 
-  createPeerConnection=()=>{
-    this.consoleLogThis("createPeerConnection");
-    myPeerConnection = new RTCPeerConnection(null);
+  tryGettingUserMedia =()=> {
+    this.consoleLogThis("navigator.mediaDevices");
+    this.consoleLogThis(navigator.mediaDevices);
 
-    myPeerConnection.onicecandidate = this.handleICECandidateEvent;
-    myPeerConnection.ontrack = this.handleTrackEvent;
-    myPeerConnection.onnegotiationneeded = this.handleNegotiationNeededEvent;
-    myPeerConnection.onremovetrack = this.handleRemoveTrackEvent;
-    myPeerConnection.oniceconnectionstatechange = this.handleICEConnectionStateChangeEvent;
-    myPeerConnection.onicegatheringstatechange = this.handleICEGatheringStateChangeEvent;
-    myPeerConnection.onsignalingstatechange = this.handleSignalingStateChangeEvent;
-  };
-
-  handleICECandidateEvent =(e)=> {
-    this.consoleLogThis("handleICECandidateEvent");
-    if (e.candidate) {
-      // sendToServer({
-      //   type: "new-ice-candidate",
-      //   target: targetUsername,
-      //   candidate: event.candidate
-      // });
-
-      let current_time = new Date().getTime();
-      let message = {
-        "temp_id":this.randomString(3)+current_time,
-        "to":this.state.currentContact.uid,
-        "to_name":this.state.currentContact.name,
-        "messageText":"onicecandidate",
-        "from":this.state.currentUser.uid,
-        "from_name":this.state.currentUser.name,
-        "date_sent": current_time,
-        "rtc":true,
-        "signal":{'candidate':e.candidate, type: "new-ice-candidate"}
-      }
-      this.state.socket.emit("_sendMessage",message,this.onEmit);
-    }
-  };
-
-  handleNewICECandidateMsg =(msg)=> {
-    var candidate = new RTCIceCandidate(msg.candidate);
-    myPeerConnection.addIceCandidate(candidate)
-      .catch(this.reportError);
-  };
-  handleTrackEvent =(e)=> {
-    this.consoleLogThis("handleTrackEvent");
-    this.consoleLogThis(e);
-    this.remoteVideo.current.srcObject = e.streams[0];
-  };
-  handleNegotiationNeededEvent =()=> {
-    this.consoleLogThis("handleNegotiationNeededEvent");
-    myPeerConnection.createOffer().then(function(offer) {
-      return myPeerConnection.setLocalDescription(offer);
-    })
-    .then(()=> {
-      // sendToServer({
-      //   name: myUsername,
-      //   target: targetUsername,
-      //   type: "video-offer",
-      //   sdp: myPeerConnection.localDescription
-      // });
-      let current_time = new Date().getTime();
-      let message = {
-        "temp_id":this.randomString(3)+current_time,
-        "to":this.state.currentContact.uid,
-        "to_name":this.state.currentContact.name,
-        "messageText":"onicecandidate",
-        "from":this.state.currentUser.uid,
-        "from_name":this.state.currentUser.name,
-        "date_sent": current_time,
-        "rtc":true,
-        "signal":{'sdp':myPeerConnection.localDescription,'type': "video-offer"}
-      }
-      this.state.socket.emit("_sendMessage",message,this.onEmit);
-
-
-    })
-    .catch(this.reportError);
-  };
-  handleRemoveTrackEvent =(e)=> {
-    this.consoleLogThis("handleTrackEvent");
-    // var stream = document.getElementById("received_video").srcObject;
-    // var trackList = stream.getTracks();
-   
-    // if (trackList.length == 0) {
-    //   closeVideoCall();
-    // }
-  };
-
-  handleVideoOfferMsg =(msg)=> {
-    this.consoleLogThis("handleVideoOfferMsg");
-    var localStream = null;
-
-    this.createPeerConnection();
-
-    var desc = new RTCSessionDescription(msg.sdp);
-    
-    var mediaConstraints = {
-      audio: true, // We want an audio track
-      video: true // ...and we want a video track
-    };
-
-    myPeerConnection
-    .setRemoteDescription(desc)
-    .then(function () {
-      return navigator.mediaDevices.getUserMedia(mediaConstraints);
-    })
-    .then((stream)=> {
-      localStream = stream;
-      this.localVideo.current.srcObject = localStream;
-
-      localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
-    })
-    .then(()=> {
-      return myPeerConnection.createAnswer();
-    })
-    .then((answer)=> {
-      return myPeerConnection.setLocalDescription(answer);
-    })
-    .then(()=> {
-      // var msg = {
-      //   name: myUsername,
-      //   target: targetUsername,
-      //   type: "video-answer",
-      //   sdp: myPeerConnection.localDescription
-      // };
-
-      // sendToServer(msg);
-
-      let current_time = new Date().getTime();
-      let message = {
-        "temp_id":this.randomString(3)+current_time,
-        "to":this.state.currentContact.uid,
-        "to_name":this.state.currentContact.name,
-        "messageText":"onicecandidate",
-        "from":this.state.currentUser.uid,
-        "from_name":this.state.currentUser.name,
-        "date_sent": current_time,
-        "rtc":true,
-        "signal":{'sdp':myPeerConnection.localDescription, type: "video-answer"}
-      }
-      this.state.socket.emit("_sendMessage",message,this.onEmit);
-
-
-
-    })
-    .catch(this.handleGetUserMediaError);
-  };
-
-
-  handleVideoAnswerMsg =(msg)=> {
-    this.consoleLogThis("handleVideoAnswerMsg");
-    // if (pc.localDescription === null || pc.localDescription.type !== "offer") return;
-    // var RTCSessionDescription = window.webkitRTCSessionDescription || window.RTCSessionDescription;
-    // var des = new RTCSessionDescription(desc);
-    // var descJson = des.toJSON();
-    // console.log('Received answer session description (new answer) : ' + JSON.stringify(descJson));
-    // pc.setRemoteDescription(des); //set remote description to incoming description object of remote peer
-
-    var desc = new RTCSessionDescription(msg.sdp);
-    myPeerConnection.setRemoteDescription(desc).catch(this.reportError);
+    if(navigator.mediaDevices.getUserMedia) {
+         navigator.mediaDevices.getUserMedia( { video:true, audio:true}).then( ( stream )=> {
+            this.setState({
+              'localStream' : stream 
+            })
+            this.localVideo.current.srcObject = this.state.localStream;
+         }).catch(this.errorHandler);
+     }else{ alert('Your browser does not support getUserMedia API'); }
   };
 
 
 
-  handleICEConnectionStateChangeEvent =(e)=> {
-    this.consoleLogThis("handleICEConnectionStateChangeEvent");
-    this.consoleLogThis(myPeerConnection.iceConnectionState);
-    switch(myPeerConnection.iceConnectionState) {
-      case "closed":
-      case "failed":
-        // closeVideoCall();
-        break;
-      default:
-        break;
-    }
-  };
-  handleICEGatheringStateChangeEvent =(e)=> {
-    this.consoleLogThis("handleICEGatheringStateChangeEvent");
-    // Our sample just logs information to console here,
-    // but you can do whatever you need.
-  };
-  handleSignalingStateChangeEvent =(e)=> {
-    this.consoleLogThis("handleSignalingStateChangeEvent");
-    // switch(myPeerConnection.signalingState) {
-    //   case "closed":
-    //     closeVideoCall();
-    //     break;
-    // }
-  };
-
-  reportError =(e)=> {
-    this.consoleLogThis("reportError");
+  errorHandler =(e)=> {
+    this.consoleLogThis("errorHandler");
     this.consoleLogThis(e);
   };
-
-  handleGetUserMediaError =(e)=> {
-    this.consoleLogThis("handleGetUserMediaError");
-    switch(e.name) {
-      case "NotFoundError":
-        alert("Unable to open your call because no camera and/or microphone" +
-              "were found.");
-        break;
-      case "SecurityError":
-      case "PermissionDeniedError":
-        // Do nothing; this is the same as the user canceling the call.
-        break;
-      default:
-        alert("Error opening your camera and/or microphone: " + e.message);
-        break;
-    }
-
-    // closeVideoCall();
-  };
+  
 
 
+   start =(isCaller)=> {
+      this.consoleLogThis("start");
+      peerConnection = new RTCPeerConnection( { 'iceServers':  [{'urls': 'stun:stun.services.mozilla.com'}, {'urls': 'stun:stun.l.google.com:19302'},]});
+      peerConnection.onicecandidate = ( e ) => {
+        if(e.candidate != null) {
+           // Meteor.call('addMsgRtc', JSON.stringify({'ice': e.candidate, '_id':id}), id);
+          this.consoleLogThis("peerConnection.onicecandidate");
+          this.consoleLogThis(e);
+        }
+     };
+      peerConnection.onaddstream = ( e )=>{
+        this.remoteVideo.current.srcObject = e.stream;
+      };
+      peerConnection.addStream(this.state.localStream);
+      if(isCaller) { 
+        peerConnection.createOffer().then(
+          this.createdDescription).catch(this.errorHandler);
+      }
 
-  invite =(e)=> {
-    this.consoleLogThis('invite')
-    e.preventDefault();   
-    var mediaConstraints = {
-      audio: true, // We want an audio track
-      video: true // ...and we want a video track
-    };
-    if (myPeerConnection) {
-      alert("You can't start a call because you already have one open!");
-    } else {
-      // var clickedUsername = evt.target.textContent;
+      
 
-      // if (clickedUsername === myUsername) {
-      //   alert("I'm afraid I can't let you talk to yourself. That would be weird.");
-      //   return;
-      // }
+    // let config = { 'iceServers':  [{'urls': 'stun:stun.services.mozilla.com'}, {'urls': 'stun:stun.l.google.com:19302'},]};
+    // config = null;
+    // peerConnection = new RTCPeerConnection(config);
+    // peerConnection.onicecandidate = ( e ) => {
+    //   this.consoleLogThis("peerConnection.onicecandidate");
+    //   if(e.candidate != null) {
+    //      // Meteor.call('addMsgRtc', JSON.stringify({'ice': e.candidate, '_id':id}), id);
+    //     this.consoleLogThis(e);
+    //   }
+    // };
+    // peerConnection.onicecandidatestatechange = ( e ) => {
+    //   this.consoleLogThis("peerConnection.onicecandidatestatechange");
+    // }
+    // peerConnection.ontrack = ( e )=>{
+    //   this.remoteVideo.current.srcObject = e.streams[0]
+    // };
+    // peerConnection.addStream(this.state.localStream);
+    // let current_time = new Date().getTime();
+    // let message = {
+    //   "temp_id":this.randomString(3)+current_time,
+    //   "to":this.state.currentContact.uid,
+    //   "to_name":this.state.currentContact.name,
+    //   "messageText":"onicecandidate",
+    //   "from":this.state.currentUser.uid,
+    //   "from_name":this.state.currentUser.name,
+    //   "date_sent": current_time,
+    //   "rtc":true,
+    //   "signal":{'sdp':peerConnection.localDescription}
+    // }
+    // this.state.socket.emit("_sendMessage",message,this.onEmit);
+   };
 
-      // targetUsername = clickedUsername;
-      this.createPeerConnection();
+  createdDescription =(description)=> {
+    peerConnection.setLocalDescription(description).then(()=> {      
+      this.consoleLogThis("peerConnection.setLocalDescription"); 
+      this.consoleLogThis(description);  
+       // Meteor.call('addMsgRtc', JSON.stringify({'sdp':peerConnection.localDescription, '_id':id}), id);
+    }).catch(this.errorHandler);
+  }
 
-      navigator.mediaDevices.getUserMedia(mediaConstraints)
-      .then((localStream)=>{
-        this.localVideo.current.srcObject = localStream;
-        localStream.getTracks().forEach(track => myPeerConnection.addTrack(track, localStream));
-      })
-      .catch(this.handleGetUserMediaError);
-    }
-  };
-
-
-
-
-  // async tryGettingUserMedia () {
-  //   this.consoleLogThis("navigator.mediaDevices");
-  //   this.consoleLogThis(navigator.mediaDevices);
-  //   const localStream = await navigator.mediaDevices.getUserMedia({vide: true, audio: true});
-  //   const peerConnection = new RTCPeerConnection(null);
-  //   localStream.getTracks().forEach(track => {
-  //       this.consoleLogThis("track");
-  //       this.consoleLogThis(track);
-  //       peerConnection.addTrack(track, localStream);
-  //   });
-
-  //   // if(navigator.mediaDevices.getUserMedia) {
-  //   //      navigator.mediaDevices.getUserMedia( { video:true, audio:true}).then( ( stream )=> {
-  //   //         this.setState({
-  //   //           'localStream' : stream 
-  //   //         })
-  //   //         this.localVideo.current.srcObject = this.state.localStream;
-
-  //   //         this.setPeerConnection();
-
-  //   //      }).catch(this.errorHandler);
-  //   //  }else{ alert('Your browser does not support getUserMedia API'); }
-  // };
-
-
-  // setPeerConnection =()=> {
-  //   this.consoleLogThis("setPeerConnection");
-
-
-  //   // let current_time = new Date().getTime();
-  //   // let message = {
-  //   //   "temp_id":this.randomString(3)+current_time,
-  //   //   "to":this.state.currentContact.uid,
-  //   //   "to_name":this.state.currentContact.name,
-  //   //   "messageText":"onicecandidate",
-  //   //   "from":this.state.currentUser.uid,
-  //   //   "from_name":this.state.currentUser.name,
-  //   //   "date_sent": current_time,
-  //   //   "rtc":true,
-  //   //   "signal":{'sdp':peerConnection.localDescription}
-  //   // }
-  //   // this.state.socket.emit("_sendMessage",message,this.onEmit);
-  // };
 
   //set username
   fLoginUser =(e)=>{
     this.consoleLogThis('fSetUserName ')
     e.preventDefault();   
+    this.start(true);
+    return;
+
 
     let username = this.loginText.current.value;//.toString;
     if(!this.state.socket.connected){
@@ -586,7 +360,7 @@ class App extends Component {
     }
   };
 
-  selectCurrentContact =(key)=>{ 
+  selectCurrentContact =(key)=>{
     this.consoleLogThis('selectCurrentContact');
     this.consoleLogThis(key);
     this.btnContact.current.click();
@@ -610,7 +384,6 @@ class App extends Component {
   fSendDcMessage =(e)=>{
     this.consoleLogThis('fSendDcMessage')
     e.preventDefault();   
-
     var cc = this.state.currentContact;
     if (Object.keys(cc).length === 0) {
       this.consoleLogThis(cc);
@@ -655,7 +428,6 @@ class App extends Component {
     this.scrollToBottom();
 
     this.state.socket.emit("_sendMessage",message,this.onEmit);
-
   };
 
 
@@ -696,6 +468,8 @@ class App extends Component {
     //   dt.getSeconds().toString().padStart(2, '0');
     // return date_format_str;
 
+
+
     return moment(ts).fromNow();
   };
 
@@ -734,6 +508,7 @@ class App extends Component {
 
     return (
       <div className="App">
+
         {!isNameSet && (
           <div>
             <h3 className="text-center">Welcome, Stranger</h3>
@@ -747,17 +522,10 @@ class App extends Component {
             <div><small>active: {activeUserCount}</small> | <small>online:{onlineUserCount}</small></div>
           </div>
         )}
-          {isNameSet && (currentMessages.length !== 0) && (
-            <div>
-              <div>
-                <video ref={this.localVideo} autoPlay className="rtcvideo"></video>
-                <video ref={this.remoteVideo} autoPlay className="rtcvideo"></video>
-              </div>
-              <div>
-                <button type="button" onClick={this.invite} className="btn btn-primary">invite</button>
-              </div>
-            </div>
-          )}
+        <div>
+          <video ref={this.localVideo} autoPlay style={{width:"40%"}}></video>
+          <video ref={this.remoteVideo} autoPlay style={{width:"40%"}}></video>
+        </div>
         <div className="card direct-chat direct-chat-primary">
           <div className="card-header">
             {!isNameSet && (
@@ -832,6 +600,7 @@ class App extends Component {
                 </ul>
               </div>
             )}
+
 
           </div>
           <div className="card-footer">

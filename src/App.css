@@ -47,3 +47,9 @@
   display: none;
 } 
 
+
+.App .rtcvideo{
+  width: 50%;
+  background-color:white;
+} 
+
