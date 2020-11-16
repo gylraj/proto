@@ -750,7 +750,7 @@ class App extends Component {
           {isNameSet && (currentMessages.length !== 0) && (
             <div>
               <div>
-                <video ref={this.localVideo} autoPlay className="rtcvideo"></video>
+                <video ref={this.localVideo} muted autoPlay className="rtcvideo"></video>
                 <video ref={this.remoteVideo} autoPlay className="rtcvideo"></video>
               </div>
               <div>
