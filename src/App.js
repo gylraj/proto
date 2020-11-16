@@ -744,7 +744,7 @@ class App extends Component {
         {isNameSet && (
           <div>
             <h3 className="text-center blue">Welcome, {currentUser.name}</h3>
-            <div><small>active: {activeUserCount}</small> | <small>online:{onlineUserCount}</small></div>
+            <div><small>online:{onlineUserCount}</small></div>
           </div>
         )}
           {isNameSet && (currentMessages.length !== 0) && (
