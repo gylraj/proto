@@ -933,8 +933,8 @@ class App extends Component {
             {isNameSet && (Object.keys(currentContact).length !== 0) && (
               <div className={(isCallStarted)?"col-md-6 col-sm-12 mx-auto":"col-md-6 col-sm-12 mx-auto hide-this"}>
                 <div className="">
-                  <video ref={this.localVideo} muted autoPlay className="rtcvideo"></video>
                   <video ref={this.remoteVideo} autoPlay className="rtcvideo"></video>
+                  <video ref={this.localVideo} muted autoPlay className="rtcvideo"></video>
                 </div>
               </div>
             )}
