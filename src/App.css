@@ -43,13 +43,13 @@
 } 
 
 
-.App .hide{
+.App .hide-this{
   display: none;
 } 
 
 
 .App .rtcvideo{
-  width: 50%;
-  background-color:white;
+  width: 100%;
+  background-color:black;
 } 
 

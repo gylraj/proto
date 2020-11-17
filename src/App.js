@@ -29,6 +29,7 @@ const DISCONNECTED_STRING  = "Disconnected to Server";
 const SERVER_OFFLINE_STRING = "Server Offline, try again later";
 
 var myPeerConnection = null;
+var pcConfigure = null;
 
 class App extends Component {
 
@@ -52,8 +53,12 @@ class App extends Component {
       onlineUserCount:0,
       activeUserCount:0,
       localStream : null,
-      rtcMessage:[]
-
+      rtcMessage:[],
+      isCallStarted: false,
+      isCallPending: false,
+      isInvitedToCall:false,
+      showAlert:false,
+      alertMessage: ""
 
     }
 
@@ -66,6 +71,8 @@ class App extends Component {
     this.messagesEnd = React.createRef();
     this.localVideo = React.createRef();
     this.remoteVideo = React.createRef();
+    this.callBtn = React.createRef();
+    this.hangUpBtn = React.createRef();
 
     //connecting to socket
     this.consoleLogThis("test");
@@ -74,10 +81,11 @@ class App extends Component {
         this.state.socket = socketIOClient(LOCAL_ENDPOINT,  IO_OPTS);
         // localStorage.debug = '*';
         localStorage.debug = '';
-
+        pcConfigure = null;
       }else{
         this.state.socket = socketIOClient(LIVE_ENDPOINT,  IO_OPTS);
         localStorage.debug = '';
+        pcConfigure = { 'iceServers':  [{'urls': 'stun:stun.services.mozilla.com'}, {'urls': 'stun:stun.l.google.com:19302'},]};
       }
   }
 
@@ -160,6 +168,7 @@ class App extends Component {
       'currentContact':{},
       'currentMessages':[],
     });
+    this.closeVideoCall();
   };
 
 
@@ -211,9 +220,54 @@ class App extends Component {
     this.consoleLogThis(data);
 
     if(data.rtc){
-      this.selectCurrentContact(data.from);
+      if(Object.keys(this.state.currentContact).length !== 0){
+        if(this.state.isCallStarted){
+          if(this.state.currentContact.uid!==data.from){
+            //already engaged in call
+            let current_time = new Date().getTime();
+            let message = {
+              "temp_id":this.randomString(3)+current_time,
+              "to":data.from,
+              "to_name":data.from_name,
+              "messageText":"Already Engaged",
+              "from":this.state.currentUser.uid,
+              "from_name":this.state.currentUser.name,
+              "date_sent": current_time,
+              "rtc":true,
+              "signal":{type: "call-already-engaged"}
+            }
+            this.state.socket.emit("_sendMessage",message,this.onEmit);
+            return;
+          }
+        }
+      }else{
+        this.selectCurrentContact(data.from);
+      }
+      if(this.state.currentContact.uid !== data.from){
+        this.selectCurrentContact(data.from);
+      }
       this.consoleLogThis(data.signal);
+
       switch(data.signal.type) {
+        case "call-already-engaged":
+          //show confirmation
+          this.callAlreadyEngaged();
+          break;
+        case "invite":
+          //show confirmation
+          this.showConfirmCall();
+          break;
+        case "accepted":
+          //start call
+          this.startCall();
+          break;
+        case "rejected":
+          //start call
+          this.callRejected();
+          break;
+        case "hang-up":
+          this.closeVideoCall();
+          break;
         case "video-offer":
           this.handleVideoOfferMsg(data.signal);
           break;
@@ -274,7 +328,10 @@ class App extends Component {
 
   createPeerConnection=()=>{
     this.consoleLogThis("createPeerConnection");
-    myPeerConnection = new RTCPeerConnection(null);
+    this.setState({
+      "isCallStarted":true
+    })
+    myPeerConnection = new RTCPeerConnection(pcConfigure);
 
     myPeerConnection.onicecandidate = this.handleICECandidateEvent;
     myPeerConnection.ontrack = this.handleTrackEvent;
@@ -288,12 +345,6 @@ class App extends Component {
   handleICECandidateEvent =(e)=> {
     this.consoleLogThis("handleICECandidateEvent");
     if (e.candidate) {
-      // sendToServer({
-      //   type: "new-ice-candidate",
-      //   target: targetUsername,
-      //   candidate: event.candidate
-      // });
-
       let current_time = new Date().getTime();
       let message = {
         "temp_id":this.randomString(3)+current_time,
@@ -326,12 +377,6 @@ class App extends Component {
       return myPeerConnection.setLocalDescription(offer);
     })
     .then(()=> {
-      // sendToServer({
-      //   name: myUsername,
-      //   target: targetUsername,
-      //   type: "video-offer",
-      //   sdp: myPeerConnection.localDescription
-      // });
       let current_time = new Date().getTime();
       let message = {
         "temp_id":this.randomString(3)+current_time,
@@ -345,19 +390,17 @@ class App extends Component {
         "signal":{'sdp':myPeerConnection.localDescription,'type': "video-offer"}
       }
       this.state.socket.emit("_sendMessage",message,this.onEmit);
-
-
     })
     .catch(this.reportError);
   };
   handleRemoveTrackEvent =(e)=> {
     this.consoleLogThis("handleTrackEvent");
-    // var stream = document.getElementById("received_video").srcObject;
-    // var trackList = stream.getTracks();
+    var stream = this.remoteVideo.current.srcObject;
+    var trackList = stream.getTracks();
    
-    // if (trackList.length == 0) {
-    //   closeVideoCall();
-    // }
+    if (trackList.length === 0) {
+      this.closeVideoCall();
+    }
   };
 
   handleVideoOfferMsg =(msg)=> {
@@ -391,15 +434,6 @@ class App extends Component {
       return myPeerConnection.setLocalDescription(answer);
     })
     .then(()=> {
-      // var msg = {
-      //   name: myUsername,
-      //   target: targetUsername,
-      //   type: "video-answer",
-      //   sdp: myPeerConnection.localDescription
-      // };
-
-      // sendToServer(msg);
-
       let current_time = new Date().getTime();
       let message = {
         "temp_id":this.randomString(3)+current_time,
@@ -413,9 +447,6 @@ class App extends Component {
         "signal":{'sdp':myPeerConnection.localDescription, type: "video-answer"}
       }
       this.state.socket.emit("_sendMessage",message,this.onEmit);
-
-
-
     })
     .catch(this.handleGetUserMediaError);
   };
@@ -442,7 +473,7 @@ class App extends Component {
     switch(myPeerConnection.iceConnectionState) {
       case "closed":
       case "failed":
-        // closeVideoCall();
+        this.closeVideoCall();
         break;
       default:
         break;
@@ -455,11 +486,13 @@ class App extends Component {
   };
   handleSignalingStateChangeEvent =(e)=> {
     this.consoleLogThis("handleSignalingStateChangeEvent");
-    // switch(myPeerConnection.signalingState) {
-    //   case "closed":
-    //     closeVideoCall();
-    //     break;
-    // }
+    switch(myPeerConnection.signalingState) {
+      case "closed":
+        this.closeVideoCall();
+        break;
+      default:
+        break;
+    }
   };
 
   reportError =(e)=> {
@@ -483,20 +516,154 @@ class App extends Component {
         break;
     }
 
-    // closeVideoCall();
+    this.closeVideoCall();
   };
 
-
+  hangUpCall=(e)=>{
+    this.consoleLogThis('hangUpCall');
+    e.preventDefault();  
+    this.closeVideoCall();
+    if(this.state.currentContact){
+      let current_time = new Date().getTime();
+      let message = {
+        "temp_id":this.randomString(3)+current_time,
+        "to":this.state.currentContact.uid,
+        "to_name":this.state.currentContact.name,
+        "messageText":"hang up",
+        "from":this.state.currentUser.uid,
+        "from_name":this.state.currentUser.name,
+        "date_sent": current_time,
+        "rtc":true,
+        "signal":{'type': "hang-up"}
+      }
+      this.state.socket.emit("_sendMessage",message,this.onEmit);
+    }
+  };
 
   invite =(e)=> {
     this.consoleLogThis('invite')
     e.preventDefault();   
+    if (this.state.isCallStarted) {
+      this.displayAlert(true,"You can't start a call because you already have one open!");
+      return;
+    }
+    if(this.state.isCallPending){
+      this.displayAlert(true,"Call Pending, Please wait");
+      return;
+    }
+    this.setState({
+      'isCallPending':true
+    })
+    let current_time = new Date().getTime();
+    let message = {
+      "temp_id":this.randomString(3)+current_time,
+      "to":this.state.currentContact.uid,
+      "to_name":this.state.currentContact.name,
+      "messageText":"stranger has invited you",
+      "from":this.state.currentUser.uid,
+      "from_name":this.state.currentUser.name,
+      "date_sent": current_time,
+      "rtc":true,
+      "signal":{type: "invite"}
+    }
+    this.state.socket.emit("_sendMessage",message,this.onEmit);
+
+  };
+
+  callAlreadyEngaged=()=> {
+    this.consoleLogThis('callAlreadyEngaged');
+    this.setState({
+      'isCallPending':false
+    });
+    this.displayAlert(true,"Stranger is Already Engaged. Sanaol");
+  };
+
+  callRejected  =()=> {
+    this.consoleLogThis('callRejected');
+    this.setState({
+      'isCallPending':false
+    });
+    this.displayAlert(true,"Stranger has rejected your call");
+  };
+
+  showConfirmCall  =()=> {
+    this.consoleLogThis('showConfirmCall');
+    this.setState({
+      'isInvitedToCall':true,
+    })
+  };
+
+  acceptIt =(e)=>{
+    this.consoleLogThis('acceptIt ')
+    e.preventDefault(); 
+    this.setState({
+      'isInvitedToCall':false,
+    });
+    this.acceptCall();
+  };
+
+  rejectIt =(e)=>{
+    this.consoleLogThis('rejectIt ')
+    e.preventDefault(); 
+    this.setState({
+      'isInvitedToCall':false,
+    });
+    this.rejectCall();
+  };
+
+  rejectCall=()=> {
+    this.consoleLogThis('rejectCall');
+    if (this.state.isCallStarted) {
+      this.displayAlert(true,"You can't start a call because you already have one open!");
+    }
+    let current_time = new Date().getTime();
+    let message = {
+      "temp_id":this.randomString(3)+current_time,
+      "to":this.state.currentContact.uid,
+      "to_name":this.state.currentContact.name,
+      "messageText":"rejected",
+      "from":this.state.currentUser.uid,
+      "from_name":this.state.currentUser.name,
+      "date_sent": current_time,
+      "rtc":true,
+      "signal":{type: "rejected"}
+    }
+    this.state.socket.emit("_sendMessage",message,this.onEmit);
+
+  };
+  acceptCall =()=> {
+    this.consoleLogThis('acceptCall');
+    if (this.state.isCallStarted) {
+      this.displayAlert(true,"You can't start a call because you already have one open!");
+    }
+    let current_time = new Date().getTime();
+    let message = {
+      "temp_id":this.randomString(3)+current_time,
+      "to":this.state.currentContact.uid,
+      "to_name":this.state.currentContact.name,
+      "messageText":"accepted",
+      "from":this.state.currentUser.uid,
+      "from_name":this.state.currentUser.name,
+      "date_sent": current_time,
+      "rtc":true,
+      "signal":{type: "accepted"}
+    }
+    this.state.socket.emit("_sendMessage",message,this.onEmit);
+  };
+
+  startCall =()=> {
+    this.consoleLogThis('startCall');
+    this.displayAlert(false, "");
+
+    this.setState({
+      'isCallPending':false
+    });
     var mediaConstraints = {
       audio: true, // We want an audio track
       video: true // ...and we want a video track
     };
     if (myPeerConnection) {
-      alert("You can't start a call because you already have one open!");
+      this.displayAlert(true,"You can't start a call because you already have one open!");
     } else {
       // var clickedUsername = evt.target.textContent;
 
@@ -517,52 +684,52 @@ class App extends Component {
     }
   };
 
+  displayAlert =(sa,msg)=> {
+    this.setState({
+      "showAlert":sa,
+      "alertMessage":msg
+    })
+  }
 
+  closeVideoCall =()=> {
+    let remoteVideo = this.remoteVideo.current;
+    let localVideo = this.localVideo.current;
+    if(!myPeerConnection){
+      return;
+    }
+    this.displayAlert(false, "");
 
+    if (myPeerConnection) {
+      myPeerConnection.ontrack = null;
+      myPeerConnection.onremovetrack = null;
+      myPeerConnection.onremovestream = null;
+      myPeerConnection.onicecandidate = null;
+      myPeerConnection.oniceconnectionstatechange = null;
+      myPeerConnection.onsignalingstatechange = null;
+      myPeerConnection.onicegatheringstatechange = null;
+      myPeerConnection.onnegotiationneeded = null;
 
-  // async tryGettingUserMedia () {
-  //   this.consoleLogThis("navigator.mediaDevices");
-  //   this.consoleLogThis(navigator.mediaDevices);
-  //   const localStream = await navigator.mediaDevices.getUserMedia({vide: true, audio: true});
-  //   const peerConnection = new RTCPeerConnection(null);
-  //   localStream.getTracks().forEach(track => {
-  //       this.consoleLogThis("track");
-  //       this.consoleLogThis(track);
-  //       peerConnection.addTrack(track, localStream);
-  //   });
+      if (remoteVideo.srcObject) {
+        remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+      }
 
-  //   // if(navigator.mediaDevices.getUserMedia) {
-  //   //      navigator.mediaDevices.getUserMedia( { video:true, audio:true}).then( ( stream )=> {
-  //   //         this.setState({
-  //   //           'localStream' : stream 
-  //   //         })
-  //   //         this.localVideo.current.srcObject = this.state.localStream;
+      if (localVideo.srcObject) {
+        localVideo.srcObject.getTracks().forEach(track => track.stop());
+      }
 
-  //   //         this.setPeerConnection();
+      myPeerConnection.close();
+      myPeerConnection = null;
 
-  //   //      }).catch(this.errorHandler);
-  //   //  }else{ alert('Your browser does not support getUserMedia API'); }
-  // };
+      this.setState({
+        "isCallStarted":false
+      })
+    }
 
-
-  // setPeerConnection =()=> {
-  //   this.consoleLogThis("setPeerConnection");
-
-
-  //   // let current_time = new Date().getTime();
-  //   // let message = {
-  //   //   "temp_id":this.randomString(3)+current_time,
-  //   //   "to":this.state.currentContact.uid,
-  //   //   "to_name":this.state.currentContact.name,
-  //   //   "messageText":"onicecandidate",
-  //   //   "from":this.state.currentUser.uid,
-  //   //   "from_name":this.state.currentUser.name,
-  //   //   "date_sent": current_time,
-  //   //   "rtc":true,
-  //   //   "signal":{'sdp':peerConnection.localDescription}
-  //   // }
-  //   // this.state.socket.emit("_sendMessage",message,this.onEmit);
-  // };
+    remoteVideo.removeAttribute("src");
+    remoteVideo.removeAttribute("srcObject");
+    localVideo.removeAttribute("src");
+    remoteVideo.removeAttribute("srcObject");
+  };
 
   //set username
   fLoginUser =(e)=>{
@@ -589,6 +756,12 @@ class App extends Component {
   selectCurrentContact =(key)=>{ 
     this.consoleLogThis('selectCurrentContact');
     this.consoleLogThis(key);
+    if(Object.keys(this.state.currentContact).length !== 0 && this.state.isCallStarted){
+      alert("Cannot switch while in call");
+      return;
+    }
+
+
     this.btnContact.current.click();
     var m = this.state.messages;
     this.consoleLogThis(m);
@@ -717,7 +890,11 @@ class App extends Component {
 
   scrollToBottom = () => {
     if(this.messagesEnd.current){
-      this.messagesEnd.current.scrollIntoView({ behavior: 'smooth' })
+      this.messagesEnd.current.scrollIntoView({ 
+        behavior: "smooth",
+        block: "nearest"
+      });
+      // this.messagesEnd.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -729,7 +906,12 @@ class App extends Component {
       currentContact, 
       currentMessages,
       activeUserCount,
-      onlineUserCount
+      onlineUserCount,
+      isCallStarted,
+      isCallPending,
+      isInvitedToCall,
+      showAlert,
+      alertMessage
     } = this.state;
 
     return (
@@ -737,127 +919,149 @@ class App extends Component {
         {!isNameSet && (
           <div>
             <h3 className="text-center">Welcome, Stranger</h3>
-
           </div>
         )}
 
         {isNameSet && (
           <div>
             <h3 className="text-center blue">Welcome, {currentUser.name}</h3>
-            <div><small>online:{onlineUserCount}</small></div>
+            
           </div>
         )}
-          {isNameSet && (currentMessages.length !== 0) && (
-            <div>
-              <div>
-                <video ref={this.localVideo} muted autoPlay className="rtcvideo"></video>
-                <video ref={this.remoteVideo} autoPlay className="rtcvideo"></video>
+        <div className="container-fluid">
+          <div className="row">
+            {isNameSet && (Object.keys(currentContact).length !== 0) && (
+              <div className={(isCallStarted)?"col-md-6 col-sm-12 mx-auto":"col-md-6 col-sm-12 mx-auto hide-this"}>
+                <div className="">
+                  <video ref={this.localVideo} muted autoPlay className="rtcvideo"></video>
+                  <video ref={this.remoteVideo} autoPlay className="rtcvideo"></video>
+                </div>
               </div>
-              <div>
-                <button type="button" onClick={this.invite} className="btn btn-primary">invite</button>
+            )}
+            <div className="col-md-6 col-sm-12 mx-auto">
+              {isNameSet && showAlert && (
+                <div className="alert alert-danger ">{alertMessage}</div>
+              )}
+              {isNameSet && (
+                <div><small>online:{onlineUserCount}</small></div>
+              )}
+              <div className="card direct-chat direct-chat-primary">
+                <div className="card-header">
+                  {!isNameSet && (
+                    <h3 className="card-title">Set a Name</h3>
+                  )}
+
+                  {isNameSet && (
+                    <h3 className="card-title blue">{(currentContact.name)?currentContact.name:'Talk to Stranger'} </h3>
+                  )}
+                  {isNameSet && (
+                    <div className="card-tools">
+                      <span data-toggle="tooltip" title="3 New Messages" className="badge badge-primary hide-this">3</span>
+                      <button type="button" className="btn btn-tool" data-card-widget="collapse">
+                        <i className="fas fa-minus"></i>
+                      </button>
+                      <button ref={this.btnContact} type="button" className="btn btn-tool" data-toggle="tooltip" title="Contacts"
+                              data-widget="chat-pane-toggle">
+                        <i className="fas fa-comments"></i>
+                      </button>
+                      <button type="button" className="btn btn-tool hide-this" data-card-widget="remove"><i className="fas fa-times"></i>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="card-body">
+                  {isNameSet && (
+                    <div className="direct-chat-messages" >
+                      {(currentMessages.length === 0) && (
+                        <div className="text-center blue">: No Message :</div>
+                      )}
+
+                      {currentMessages.map((cm,i)=>
+                        <div className={(cm.from === currentUser.uid)?'direct-chat-msg right':'direct-chat-msg'} key={i}>
+                          <div className="direct-chat-infos clearfix">
+                            <span className={(cm.from === currentUser.uid)?'direct-chat-name float-right':'direct-chat-name float-left'}
+                            >{cm.from_name}</span>
+                            <span className={(cm.from === currentUser.uid)?'direct-chat-timestamp float-left':'direct-chat-timestamp float-right'}>{ this.getTimeString(cm.date_sent) }</span>
+                          </div>
+                          <img className="direct-chat-img" src={DEFAULT_IMAGE_URL} alt="meaningful :D"/>
+                          <div className="direct-chat-text">
+                            {cm.messageText}
+                          </div>
+                        </div>
+                      )}
+                      <div ref={this.messagesEnd} />
+
+                    </div>
+                  )}
+
+                  {isNameSet &&  (
+                    <div className="direct-chat-contacts">
+                      {(Object.keys(userMap).length===1) && (
+                        <div className="text-center">: No Stranger :</div>
+                      )}
+                      <ul className="contacts-list">
+                        {Object.keys(userMap).reverse().map((key, i)=>
+                          <li onClick={() => this.selectCurrentContact(key)} key={key} className={(userMap[key].uid === currentUser.uid)?"hide-this":""}>
+                            <img className="contacts-list-img" src={DEFAULT_IMAGE_URL} alt="meaningful :D"/>
+                            <div className="contacts-list-info">
+                              <span className="contacts-list-name">{userMap[key].name}
+                                <small className="contacts-list-date float-right">{(userMap[key].messageText)?this.getTimeString(userMap[key].date_sent):""}</small>
+                              </span>
+                              <span className="contacts-list-msg">{(userMap[key].messageText)?userMap[key].messageText:""}</span>
+                            </div>
+                          </li>
+                        )}
+                        
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                <div className="card-footer">
+                  {isNameSet && (Object.keys(currentContact).length !== 0) && (
+                    <div>
+                      {!isCallStarted && !isCallPending && !isInvitedToCall && (
+                        <button ref={this.callBtn} type="button" onClick={this.invite} className="btn btn-success">call</button>
+                      )}
+                      {!isCallStarted && isCallPending && (
+                        <button type="button" className="btn btn-info">calling..</button>
+                      )}
+                      {!isCallStarted && isInvitedToCall && (
+                        <button type="button" className="btn btn-success" onClick={this.acceptIt}>accept</button>
+                      )}
+                      {!isCallStarted && isInvitedToCall && (
+                        <button type="button" className="btn btn-danger" onClick={this.rejectIt}>reject</button>
+                      )}
+                      {isCallStarted && (
+                        <button ref={this.hangUpBtn} type="button" onClick={this.hangUpCall} className="btn btn-danger">end</button>    
+                      )}
+                    </div>
+                  )}
+                  {isNameSet && (
+                    <form ref={this.dcForm} onSubmit={this.fSendDcMessage}>
+                      <div className="input-group">
+                        <input type="text" ref={this.dcText} placeholder="Type Message" className="form-control"/>
+                        <span className="input-group-append">
+                          <button type="button" onClick={this.fSendDcMessage} className="btn btn-primary">Send</button>
+                        </span>
+                      </div>
+                    </form>
+                  )}
+                  {!isNameSet && (
+                    <form ref={this.loginForm} onSubmit={this.fLoginUser}>
+                      <div className="input-group">
+                        <input type="text" ref={this.loginText} placeholder="What's your name" className="form-control"/>
+                        <span className="input-group-append">
+                          <button type="button" onClick={this.fLoginUser} className="btn btn-primary">Set</button>
+                        </span>
+                      </div>
+                    </form>
+                  )}
+                </div>
               </div>
             </div>
-          )}
-        <div className="card direct-chat direct-chat-primary">
-          <div className="card-header">
-            {!isNameSet && (
-              <h3 className="card-title">Set a Name</h3>
-            )}
-
-            {isNameSet && (
-              <h3 className="card-title blue">{(currentContact.name)?currentContact.name:'Talk to Stranger'} </h3>
-            )}
-            {isNameSet && (
-              <div className="card-tools">
-                <span data-toggle="tooltip" title="3 New Messages" className="badge badge-primary hide">3</span>
-                <button type="button" className="btn btn-tool" data-card-widget="collapse">
-                  <i className="fas fa-minus"></i>
-                </button>
-                <button ref={this.btnContact} type="button" className="btn btn-tool" data-toggle="tooltip" title="Contacts"
-                        data-widget="chat-pane-toggle">
-                  <i className="fas fa-comments"></i>
-                </button>
-                <button type="button" className="btn btn-tool hide" data-card-widget="remove"><i className="fas fa-times"></i>
-                </button>
-              </div>
-            )}
-
-
-
           </div>
-
-          <div className="card-body">
-            {isNameSet && (
-              <div className="direct-chat-messages" >
-                {(currentMessages.length === 0) && (
-                  <div className="text-center blue">: No Message :</div>
-                )}
-
-                {currentMessages.map((cm,i)=>
-                  <div className={(cm.from === currentUser.uid)?'direct-chat-msg right':'direct-chat-msg'} key={i}>
-                    <div className="direct-chat-infos clearfix">
-                      <span className={(cm.from === currentUser.uid)?'direct-chat-name float-right':'direct-chat-name float-left'}
-                      >{cm.from_name}</span>
-                      <span className={(cm.from === currentUser.uid)?'direct-chat-timestamp float-left':'direct-chat-timestamp float-right'}>{ this.getTimeString(cm.date_sent) }</span>
-                    </div>
-                    <img className="direct-chat-img" src={DEFAULT_IMAGE_URL} alt="meaningful :D"/>
-                    <div className="direct-chat-text">
-                      {cm.messageText}
-                    </div>
-                  </div>
-                )}
-                <div ref={this.messagesEnd} />
-
-              </div>
-            )}
-
-            {isNameSet &&  (
-              <div className="direct-chat-contacts">
-                {(Object.keys(userMap).length===1) && (
-                  <div className="text-center">: No Stranger :</div>
-                )}
-                <ul className="contacts-list">
-                  {Object.keys(userMap).reverse().map((key, i)=>
-                    <li onClick={() => this.selectCurrentContact(key)} key={key} className={(userMap[key].uid === currentUser.uid)?"hide":""}>
-                      <img className="contacts-list-img" src={DEFAULT_IMAGE_URL} alt="meaningful :D"/>
-                      <div className="contacts-list-info">
-                        <span className="contacts-list-name">{userMap[key].name}
-                          <small className="contacts-list-date float-right">{(userMap[key].messageText)?this.getTimeString(userMap[key].date_sent):""}</small>
-                        </span>
-                        <span className="contacts-list-msg">{(userMap[key].messageText)?userMap[key].messageText:""}</span>
-                      </div>
-                    </li>
-                  )}
-                  
-                </ul>
-              </div>
-            )}
-
-          </div>
-          <div className="card-footer">
-            {isNameSet && (
-              <form ref={this.dcForm} onSubmit={this.fSendDcMessage}>
-                <div className="input-group">
-                  <input type="text" ref={this.dcText} placeholder="Type Message" className="form-control"/>
-                  <span className="input-group-append">
-                    <button type="button" onClick={this.fSendDcMessage} className="btn btn-primary">Send</button>
-                  </span>
-                </div>
-              </form>
-            )}
-            {!isNameSet && (
-              <form ref={this.loginForm} onSubmit={this.fLoginUser}>
-                <div className="input-group">
-                  <input type="text" ref={this.loginText} placeholder="What's your name" className="form-control"/>
-                  <span className="input-group-append">
-                    <button type="button" onClick={this.fLoginUser} className="btn btn-primary">Set Name</button>
-                  </span>
-                </div>
-              </form>
-            )}
-          </div>
-
         </div>
+
         <div className="text-center"><small>Data here are meant to be volatile and not a single datum is being saved.</small></div>
       </div>
     );
