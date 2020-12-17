@@ -16,7 +16,7 @@ import socketIOClient from "socket.io-client";
 const LIVE_ENDPOINT = "https://gylsio.herokuapp.com";
 const LOCAL_ENDPOINT = "http://localhost:5555";
 // const LOCAL_ENDPOINT = "http://192.168.43.30:5555";
-const IS_DEBUG = true;
+const IS_DEBUG = false;
 const IO_OPTS = {
   transports: ["websocket"],
   autoConnect: false,
